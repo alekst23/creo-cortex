@@ -15,5 +15,7 @@ container = launcher.launch_container(
     container_name=os.getenv("EXECUTION_CONTAINER_NAME", "my_container"),
     environment={"MYVAR": "value"},
     ports={"80": "8080"},
-    volumes={data_folder: {"bind": "/container/data", "mode": "rw"}}
+    volumes={data_folder: {"bind": "/container/data", "mode": "rw"}},
+    use_aws_credentials=True,
+    use_github_credentials=True
 )

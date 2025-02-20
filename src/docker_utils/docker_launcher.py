@@ -5,6 +5,12 @@ import shutil
 import tempfile
 from typing import Optional, Dict, List
 
+from dotenv import load_dotenv
+load_dotenv()
+
+DEFAULT_WORKING_DIR = "/container/data"
+AWS_PROFILE = os.getenv("DOCKER_AWS_PROFILE", "default")
+
 class DockerEnvironmentManager:
     def __init__(self):
         self.client = docker.from_env()
@@ -54,7 +60,8 @@ class DockerEnvironmentManager:
         environment: Optional[Dict[str, str]] = None,
         ports: Optional[Dict[str, str]] = None,
         volumes: Optional[Dict[str, Dict[str, str]]] = None,
-        aws_credentials: bool = True,
+        use_aws_credentials: bool = True,
+        use_github_credentials: bool = True,
         additional_mounts: Optional[List[str]] = None
     ):
         """
@@ -65,7 +72,7 @@ class DockerEnvironmentManager:
             environment: Dictionary of environment variables
             ports: Dictionary of port mappings
             volumes: Dictionary of volume mappings
-            aws_credentials: Whether to mount AWS credentials
+            use_aws_credentials: Whether to mount AWS credentials
             additional_mounts: List of additional host:container path pairs to mount
         """
         try:
@@ -73,7 +80,7 @@ class DockerEnvironmentManager:
             volumes = volumes or {}
             
             # Add AWS credentials if requested
-            if aws_credentials:
+            if use_aws_credentials:
                 aws_path = os.path.expanduser("~/.aws")
                 if os.path.exists(aws_path):
                     print(f"Found AWS credentials at {aws_path}")
@@ -83,28 +90,53 @@ class DockerEnvironmentManager:
                     if os.path.exists(os.path.join(aws_path, 'config')):
                         print("Found AWS config file")
                     
-                    # Mount with read-write permission temporarily to debug
-                    volumes[aws_path] = {'bind': '/root/.aws', 'mode': 'rw'}
+                    # Mount with read-only
+                    volumes[aws_path] = {'bind': '/root/.aws', 'mode': 'ro'}
                 else:
                     print("Warning: AWS credentials directory not found at " + aws_path)
             
+            # Add GitHub credentials if requested
+            if use_github_credentials:
+                ssh_path = os.path.expanduser("~/.ssh")
+                if os.path.exists(ssh_path):
+                    print(f"Found SSH keys at {ssh_path}")
+                    volumes[ssh_path] = {'bind': '/root/.ssh', 'mode': 'ro'}
+                else:
+                    print("Warning: SSH keys directory not found at " + ssh_path)
+
             # Add additional mounts
             if additional_mounts:
                 for mount in additional_mounts:
                     host_path, container_path = mount.split(':')
                     volumes[host_path] = {'bind': container_path, 'mode': 'rw'}
             
+            # Check if container is running
+            if container_name:
+                try:
+                    container = self.client.containers.get(container_name)
+                    if container.status == "running":
+                        print(f"Container {container_name} is already running")
+                        # kill the container
+                        container.kill()
+                        print(f"Container {container_name} killed successfully!")
+                        # remove the container
+                        container.remove()
+                        print(f"Container {container_name} removed successfully!")
+                        
+                except docker.errors.NotFound:
+                    pass
+
             # Launch container
             container = self.client.containers.run(
                 f"{self.image_name}:{self.image_tag}",
                 name=container_name,
-                environment=environment or {},
+                environment={**(environment or {}), "AWS_PROFILE": AWS_PROFILE},
                 ports=ports or {},
                 volumes=volumes,
                 detach=True,
                 tty=True,
                 stdin_open=True,
-                working_dir="/workspace"
+                working_dir=DEFAULT_WORKING_DIR
             )
             
             print(f"Container {container.name} launched successfully!")
@@ -126,6 +158,7 @@ def main():
     parser.add_argument('--ports', nargs='*', help='Port mappings (HOST:CONTAINER)')
     parser.add_argument('--volumes', nargs='*', help='Volume mappings (HOST:CONTAINER)')
     parser.add_argument('--no-aws-credentials', action='store_true', help='Don\'t mount AWS credentials')
+    parser.add_argument('--no-github-credentials', action='store_true', help='Don\'t mount GitHub credentials')
     
     args = parser.parse_args()
     
@@ -155,7 +188,8 @@ def main():
         environment=env,
         ports=ports,
         volumes=None,  # Will be handled by additional_mounts
-        aws_credentials=not args.no_aws_credentials,
+        use_aws_credentials=not args.no_use_aws_credentials,
+        use_github_credentials=not args.no_use_github_credentials,
         additional_mounts=args.volumes
     )
 

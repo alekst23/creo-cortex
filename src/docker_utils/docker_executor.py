@@ -34,7 +34,7 @@ class DockerCommandExecutor:
             
             # Execute the command
             exec_result = container.exec_run(
-                command,
+                cmd=["/bin/sh", "-c", command],
                 workdir=working_dir,
                 environment=environment,
                 demux=True  # Split stdout and stderr

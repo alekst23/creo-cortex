@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y \
     unzip \
     groff \
     less \
+    git \
+    openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 RUN arch=$(uname -m) && \
