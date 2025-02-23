@@ -16,7 +16,11 @@ from agent.tools import (
     tool_aws_cli,
     tool_shell,
     tool_save_note,
-    tool_set_working_dir
+    tool_set_working_dir,
+    tool_add_task,
+    tool_set_task_status,
+    tool_set_goal,
+    tool_open_file
 )
 
 from agent.session_memory import SessionMemory
@@ -66,15 +70,22 @@ class MainAgent:
             tool_set_working_dir,
             tool_aws_cli,
             tool_shell,
-            tool_save_note
+            tool_save_note,
+            tool_add_task,
+            tool_set_task_status,
+            tool_set_goal,
+            tool_open_file
         ]
         self.model = get_llm()
 
         prompt = PromptTemplate.from_template(
             template=self.get_prompt_text()
         ).format(
+            working_dir=session_memory.get_working_dir(),
+            goal=session_memory.get_goal(),
+            tasks=session_memory.get_tasks(),
             notes_memory=session_memory.get_notes(),
-            working_dir=session_memory.get_working_dir()
+            open_files=session_memory.get_open_files(),
         )
 
         self.app = create_react_agent(self.model, self.tools, prompt=str(prompt), checkpointer=MemorySaver())
