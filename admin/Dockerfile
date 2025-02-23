@@ -30,9 +30,6 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 # Set working directory
 WORKDIR /workspace
 
-# Set default AWS profile
-ENV AWS_PROFILE=alekst23
-
 # Create .aws directory with proper permissions
 RUN mkdir -p /root/.aws && chmod 700 /root/.aws
 
