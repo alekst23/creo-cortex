@@ -9,7 +9,6 @@ cachetools==5.5.1
 certifi==2025.1.31
 charset-normalizer==3.4.1
 click==8.1.8
--e git+ssh://git@github.com/alekst23/creocortex.git@c4de9b1d6f9a599eb9e0aa232632436b1e07d997#egg=creo
 distro==1.9.0
 dnspython==2.7.0
 docker==7.1.0

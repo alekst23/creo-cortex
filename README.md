@@ -35,13 +35,23 @@ cp .env.example .env
 
 - Create and start a virtual environment:
 ```bash
-pyenv virtualenv 3.13.1 creo-cortex-venv
+pyenv install -v 3.12.3
+pyenv virtualenv 3.12.3 creo-cortex-venv
 pynev activate creo-cortex-venv
 ```
 
 - Execute the following commands to build and start the Docker container for the execution context
 ```
 make install
+make build
+```
+
+### 🐧 Linux notes
+
+If you get permission errors on `make build`, you must add your user to the `docker` group:
+```
+sudo usermod -aG docker $USER
+newgrp docker
 make build
 ```
 

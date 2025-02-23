@@ -1,4 +1,7 @@
-install:
+start-mongo:
+	sh admin/start_mongo.sh
+
+install: start-mongo
 	pip install -r requirements.txt
 
 build:
