@@ -14,6 +14,7 @@ if src_path not in sys.path:
 from agent.main import MainAgent
 from agent.session_memory import get_session_memory
 
+CONVERSATION_LENGTH=50
 
 class StreamlitApp:
     def __init__(self):
@@ -25,17 +26,30 @@ class StreamlitApp:
                 layout="wide",
                 initial_sidebar_state="expanded"
             )
+            logging.info(f">>> params: {st.query_params}")
+            session_id = st.query_params.get("session_id", "default")
+            logging.info(f">>> session_id: {session_id}")
+            logging.info(f">>> debug: {session_id=='abc1234'}")
             
+            # Initialize session state
             self.state = st.session_state
-            self.state.session_id = "abc1234"
-            self.mem = st.session_state.memory = get_session_memory(self.state.session_id)
-            self.state.messages = self.clean_messages(self.mem.get_messages())
-            self.agent = MainAgent(self.mem)
+            self.load_session(session_id)
+            # self.state.session_id = session_id
+            # self.mem = st.session_state.memory = get_session_memory(self.state.session_id)
+            # self.state.messages = self.clean_messages(self.mem.get_messages())
+            # self.agent = MainAgent(self.mem)
             self.state.setup_complete = True
             
             # Initialize input state
             if 'user_input' not in self.state:
                 self.state.user_input = ""
+    
+    def load_session(self, session_id):
+        logging.info(f">>> loading session: {session_id}")
+        self.state.session_id = session_id
+        self.mem = st.session_state.memory = get_session_memory(self.state.session_id)
+        self.state.messages = self.clean_messages(self.mem.get_messages())
+        self.agent = MainAgent(self.mem)
 
     def clean_messages(self, messages):
         return [dict(role=msg["role"], content=msg["content"]) for msg in messages]
@@ -45,7 +59,7 @@ class StreamlitApp:
             user_input = self.state.user_input
             self.state.messages.append(dict(role="user", content=user_input))
 
-            response = self.agent.generate_response(self.state.messages[-10:])
+            response = self.agent.generate_response(self.state.messages[-CONVERSATION_LENGTH:])
             self.state.messages.append(dict(role="assistant", content=response))
 
             self.mem.add_message("user", user_input)
@@ -58,11 +72,15 @@ class StreamlitApp:
         st.title("CREO-CORTEX")
         st.subheader("An assistant for building and deploying cloud applications.")
         st.markdown("<sup>streamlit | langchain | langgraph ReAct</sup>", unsafe_allow_html=True)
-        col1, col2 = st.columns(2)
+        if new_session_id := st.text_input("session_id", self.state.session_id):
+            if new_session_id != self.state.session_id:
+                self.load_session(new_session_id)
+                st.rerun()
 
+        col1, col2 = st.columns(2)
         with col1:
             user_input = st.text_area(
-                "Input your message here:",
+                "Input your message here (Use TAB+ENTER to submit):",
                 key="input_area"
             )
             
@@ -71,26 +89,34 @@ class StreamlitApp:
             
             if st.button("Submit"):
                 self.handle_submit()
-            
-            st.markdown("<sup>Click Submit or use CMD+ENTER to submit</sup>", unsafe_allow_html=True)
 
+            with st.popover("all chat history"):
+                for msg in self.state.messages:
+                    role = msg.get("role", "system")
+                    prefix = "🐒 *user*: " if role == "user" else "⭐ agent: "
+                    st.write(f"{prefix} {msg['content']}")
+                    
             with st.container(height=600):
-                for msg in self.state.messages[-10:]:
+                for msg in self.state.messages[:-4:-1]:
                     role = msg.get("role", "system")
                     prefix = "🐒 *user*: " if role == "user" else "⭐ agent: "
                     st.write(f"{prefix} {msg['content']}")
 
         with col2:
+            logging.info(f">>> Displaying session memory for {self.state.session_id}")
+
             st.subheader("Goal")
-            st.write(self.mem.get_goal())
+            st.markdown(self.mem.get_goal())
 
             st.subheader("Tasks")
             for task in self.mem.get_tasks():
-                st.markdown(f"{task['sort_order']}) [{task['status']}] {task['task']}")
+                st.markdown(f"{task['sort_order']}) [{task['status']}] {task['task']}\n{task.get('result', '')}")
 
             st.subheader("Working Directory")
             if new_working_dir := st.text_input("path", self.mem.get_working_dir()):
-                self.mem.set_working_dir(new_working_dir)
+                if new_working_dir != self.mem.get_working_dir():
+                    self.mem.set_working_dir(new_working_dir)
+                    st.rerun()
 
             st.subheader("Open Files")
             for file in self.mem.get_open_files():

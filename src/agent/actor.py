@@ -19,9 +19,9 @@ class Actor:
         self.executor = DockerCommandExecutor()
         self.memory = session_memory or get_session_memory()
 
-_actor: Actor = None
-def get_actor(session_memory: SessionMemory = None) -> Actor:
+_actor: Actor = {}
+def get_actor(session_id: str) -> Actor:
     global _actor
-    if _actor is None:
-        _actor = Actor(session_memory)
-    return _actor
+    if not _actor or session_id not in _actor:
+        _actor[session_id] = Actor(get_session_memory(session_id))
+    return _actor[session_id]

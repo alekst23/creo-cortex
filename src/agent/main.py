@@ -16,9 +16,11 @@ from agent.tools import (
     tool_aws_cli,
     tool_shell,
     tool_save_note,
+    tool_remove_note,
     tool_set_working_dir,
     tool_add_task,
     tool_set_task_status,
+    tool_clear_tasks,
     tool_set_goal,
     tool_open_file
 )
@@ -28,11 +30,14 @@ from agent.actor import get_actor
 
 MODEL_NAME_DEFAULT = 'anthropic.claude-3-5-sonnet-20240620-v1:0'
 PROMPT_FILE_DEFAULT = 'MAIN.txt'
+#CHATGPT_MODEL = 'gpt-4o'
+CHATGPT_MODEL = 'o3-mini'
+
 
 
 def get_llm_openai():
     from langchain_openai import ChatOpenAI
-    client = ChatOpenAI(temperature=0, model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
+    client = ChatOpenAI( model=CHATGPT_MODEL, api_key=os.getenv("OPENAI_API_KEY"))
     # client.max_tokens = 120000
     return client
 
@@ -60,7 +65,7 @@ class MainAgent:
     session_memory: SessionMemory
 
     def __init__(self, session_memory: SessionMemory = None):
-        self.actor = get_actor(session_memory)
+        self.actor = get_actor(session_memory.session_id)
 
         if not session_memory.get_working_dir():
             session_memory.set_working_dir(DEFAULT_WORKING_DIR)
@@ -71,8 +76,10 @@ class MainAgent:
             tool_aws_cli,
             tool_shell,
             tool_save_note,
+            tool_remove_note,
             tool_add_task,
             tool_set_task_status,
+            tool_clear_tasks,
             tool_set_goal,
             tool_open_file
         ]
@@ -81,11 +88,12 @@ class MainAgent:
         prompt = PromptTemplate.from_template(
             template=self.get_prompt_text()
         ).format(
+            session_id=session_memory.session_id,
             working_dir=session_memory.get_working_dir(),
             goal=session_memory.get_goal(),
             tasks=session_memory.get_tasks(),
             notes_memory=session_memory.get_notes(),
-            open_files=session_memory.get_open_files(),
+            open_files=session_memory.get_open_files()
         )
 
         self.app = create_react_agent(self.model, self.tools, prompt=str(prompt), checkpointer=MemorySaver())

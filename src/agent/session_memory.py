@@ -18,6 +18,9 @@ class SessionMemory():
     def get_notes(self):
         return list(self.db["notes"].find({"session_id": self.session_id}))
     
+    def remove_note(self, note_id):
+        self.db["notes"].delete_one({"session_id": self.session_id, "_id": ObjectId(note_id)})
+        
     def get_messages(self):
         return list(self.db["messages"].find({"session_id": self.session_id}))
     
@@ -48,20 +51,26 @@ class SessionMemory():
         else:
             tasks = self.db["tasks"].find({"session_id": self.session_id})
             sort_order = 0.0
-            for task in tasks:
-                if task["sort_order"] > sort_order:
-                    sort_order = task["sort_order"]
+            for t in tasks:
+                if t["sort_order"] > sort_order:
+                    sort_order = t["sort_order"]
             sort_order += 1
             self.db["tasks"].insert_one(dict(session_id=self.session_id, task=task, status="new", sort_order=sort_order))
 
     def set_task_status(self, task_id, status):
         self.db["tasks"].update_one({"session_id": self.session_id, "_id": ObjectId(task_id)}, {"$set": {"status": status}})
 
+    def update_task(self, task_id, status, result):
+        self.db["tasks"].update_one({"session_id": self.session_id, "_id": ObjectId(task_id)}, {"$set": {"status": status, "result": result}})
+        
     def get_tasks(self):
         tasks = self.db["tasks"].find({"session_id": self.session_id})
         sorted_tasks = sorted(tasks, key=lambda x: x["sort_order"])
         return sorted_tasks
     
+    def clear_tasks(self):
+        self.db["tasks"].delete_many({"session_id": self.session_id})
+
     def set_open_file(self, file_path, data):
         self.db["files"].update_one({"session_id": self.session_id, "file_path": file_path}, {"$set": {"data": data}}, upsert=True)
 
@@ -70,13 +79,12 @@ class SessionMemory():
     
 
 # Lazy initialization with thread-safety
-_session_memory = None
+_session_memory = {}
 _lock = threading.Lock()
 
 def get_session_memory(session_id=None)->SessionMemory:
     global _session_memory
-    if _session_memory is None:
+    if _session_memory is None or session_id not in _session_memory:
         with _lock:  # Ensures thread-safe initialization
-            if _session_memory is None:  # Double-checked locking
-                _session_memory = SessionMemory(session_id)
-    return _session_memory
+            _session_memory[session_id] = SessionMemory(session_id)
+    return _session_memory[session_id]
