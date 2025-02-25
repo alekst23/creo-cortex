@@ -11,6 +11,8 @@ from langgraph.checkpoint.memory import MemorySaver
 
 import boto3
 
+import logging
+
 from agent.tools import (
     tool_local_ip,
     tool_aws_cli,
@@ -22,7 +24,8 @@ from agent.tools import (
     tool_set_task_status,
     tool_clear_tasks,
     tool_set_goal,
-    tool_open_file
+    tool_open_file,
+    tool_close_file
 )
 
 from agent.session_memory import SessionMemory
@@ -33,7 +36,10 @@ PROMPT_FILE_DEFAULT = 'MAIN.txt'
 #CHATGPT_MODEL = 'gpt-4o'
 CHATGPT_MODEL = 'o3-mini'
 
-
+MODEL_BOOST = {
+    False: 'o3-mini',
+    True: 'gpt-4o'
+}
 
 def get_llm_openai():
     from langchain_openai import ChatOpenAI
@@ -63,8 +69,11 @@ class MainAgent:
     tools: List[BaseTool]
     model: BaseChatModel
     session_memory: SessionMemory
+    app: {}
 
     def __init__(self, session_memory: SessionMemory = None):
+        self.session_memory = session_memory
+
         self.actor = get_actor(session_memory.session_id)
 
         if not session_memory.get_working_dir():
@@ -81,7 +90,8 @@ class MainAgent:
             tool_set_task_status,
             tool_clear_tasks,
             tool_set_goal,
-            tool_open_file
+            tool_open_file,
+            tool_close_file
         ]
         self.model = get_llm()
 
@@ -96,7 +106,11 @@ class MainAgent:
             open_files=session_memory.get_open_files()
         )
 
-        self.app = create_react_agent(self.model, self.tools, prompt=str(prompt), checkpointer=MemorySaver())
+        #checkpointer = MemorySaver()
+        self.app = {}
+        for key in MODEL_BOOST:
+            logging.info(f">>> Creating agent for ({key}) {MODEL_BOOST[key]}")
+            self.app[key] = create_react_agent(MODEL_BOOST[key], self.tools, prompt=str(prompt)) #, checkpointer=checkpointer)
 
 
     def get_prompt_text(self, file_name=PROMPT_FILE_DEFAULT):
@@ -109,9 +123,14 @@ class MainAgent:
         # Use the agent
         if type(message) == str:
             message = [{"role": "user", "content": message}]
-        final_state = self.app.invoke(
+
+        logging.info(f">>> Generating response using {MODEL_BOOST[self.session_memory.get_boost_state()]}")
+        final_state = self.app[self.session_memory.get_boost_state()].invoke(
             {"messages": message},
-            config={"configurable": {"thread_id": 12}}
+            config={
+                "configurable": {"thread_id": self.session_memory.session_id},
+                "recursion_limit": 100
+                }
         )
         response = final_state["messages"][-1].content
 

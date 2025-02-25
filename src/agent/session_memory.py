@@ -20,7 +20,7 @@ class SessionMemory():
     
     def remove_note(self, note_id):
         self.db["notes"].delete_one({"session_id": self.session_id, "_id": ObjectId(note_id)})
-        
+
     def get_messages(self):
         return list(self.db["messages"].find({"session_id": self.session_id}))
     
@@ -76,6 +76,18 @@ class SessionMemory():
 
     def get_open_files(self):
         return list(self.db["files"].find({"session_id": self.session_id}))
+    
+    def remove_open_file(self, file_path):
+        self.db["files"].delete_one({"session_id": self.session_id, "file_path": file_path})
+    
+    def get_boost_state(self):
+        result = self.db["environment"].find_one({"session_id": self.session_id})
+        if result:
+            return result.get("boost_state", False)
+        return False
+    
+    def set_boost_state(self, state):
+        self.db["environment"].update_one({"session_id": self.session_id}, {"$set": {"boost_state": state}}, upsert=True)
     
 
 # Lazy initialization with thread-safety

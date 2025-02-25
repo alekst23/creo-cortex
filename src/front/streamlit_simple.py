@@ -11,7 +11,7 @@ src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-from agent.main import MainAgent
+from agent.main import MainAgent, MODEL_BOOST
 from agent.session_memory import get_session_memory
 
 CONVERSATION_LENGTH=50
@@ -38,6 +38,7 @@ class StreamlitApp:
             # self.mem = st.session_state.memory = get_session_memory(self.state.session_id)
             # self.state.messages = self.clean_messages(self.mem.get_messages())
             # self.agent = MainAgent(self.mem)
+            self.state.boost_option = False
             self.state.setup_complete = True
             
             # Initialize input state
@@ -69,12 +70,19 @@ class StreamlitApp:
             self.state.user_input = ""
 
     def run(self):
-        st.title("CREO-CORTEX")
-        st.subheader("An assistant for building and deploying cloud applications.")
-        st.markdown("<sup>streamlit | langchain | langgraph ReAct</sup>", unsafe_allow_html=True)
-        if new_session_id := st.text_input("session_id", self.state.session_id):
-            if new_session_id != self.state.session_id:
-                self.load_session(new_session_id)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.title("CREO-CORTEX")
+            st.subheader("An assistant for building and deploying cloud applications.")
+            st.markdown("<sup>streamlit | langchain | langgraph ReAct</sup>", unsafe_allow_html=True)
+        with col2:
+            if new_session_id := st.text_input("session_id", self.state.session_id):
+                if new_session_id != self.state.session_id:
+                    self.load_session(new_session_id)
+                    st.rerun()
+            
+            if st.button(f"toggle boost: {self.mem.get_boost_state()}"):
+                self.mem.set_boost_state(not self.mem.get_boost_state())
                 st.rerun()
 
         col1, col2 = st.columns(2)
@@ -97,14 +105,12 @@ class StreamlitApp:
                     st.write(f"{prefix} {msg['content']}")
                     
             with st.container(height=600):
-                for msg in self.state.messages[:-4:-1]:
+                for msg in self.state.messages[:-CONVERSATION_LENGTH:-1]:
                     role = msg.get("role", "system")
                     prefix = "🐒 *user*: " if role == "user" else "⭐ agent: "
                     st.write(f"{prefix} {msg['content']}")
 
         with col2:
-            logging.info(f">>> Displaying session memory for {self.state.session_id}")
-
             st.subheader("Goal")
             st.markdown(self.mem.get_goal())
 

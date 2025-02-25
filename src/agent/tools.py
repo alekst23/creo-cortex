@@ -212,3 +212,15 @@ def tool_open_file(session_id: str, file_path: str) -> str:
     except Exception as e:
         logger.error(f"Error opening file: {str(e)}")
         return f"Error opening file: {str(e)}"
+    
+@tool
+def tool_close_file(session_id: str, file_path: str) -> str:
+    """
+    Closes a file and removes it from memory.
+    """
+    logger.info(">> TOOL: Closing file")
+    logger.info(f"File path: {file_path}")
+
+    actor: Actor = get_actor(session_id)
+    actor.memory.remove_open_file(file_path)
+    return f"File closed successfully."
