@@ -224,3 +224,32 @@ def tool_close_file(session_id: str, file_path: str) -> str:
     actor: Actor = get_actor(session_id)
     actor.memory.remove_open_file(file_path)
     return f"File closed successfully."
+
+
+@tool
+def tool_write_file(session_id: str, file_path: str, file_data: str) -> str:
+    """
+    Writes data to a file.
+    `file_path` must be a path relative to the working directory.
+    """
+    logger.info(">> TOOL: Writing file")
+    logger.info(f"File path: {file_path}")
+    import subprocess
+
+    try:
+        actor: Actor = get_actor(session_id)
+        exit_code, stdout, stderr = actor.executor.write_to_file(
+            container_name=os.getenv("EXECUTION_CONTAINER_NAME", DEFAULT_CONTAINER_NAME),
+            working_dir=actor.memory.get_working_dir(),
+            file_path=file_path,
+            content=file_data
+        )
+        if exit_code != 0:
+            logger.error(f"Error writing file: {stderr}\n{stdout}")
+            raise RuntimeError(f"Error writing file: {stderr}\n{stdout}")
+        
+        return f"File written successfully."
+    
+    except Exception as e:
+        logger.error(f"Error writing file: {str(e)}")
+        return f"Error writing file: {str(e)}"

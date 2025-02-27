@@ -1,9 +1,11 @@
 from langchain_core.messages.tool import ToolCall, ToolMessage
+from agent.actor import get_actor, Actor
 
 from agent.tools import(
     tool_local_ip,
     tool_aws_cli,
-    tool_shell
+    tool_shell,
+    tool_write_file
 )
 
 
@@ -42,3 +44,25 @@ def test_tool_shell():
     assert content is not None
     assert type(content) == str
     assert "root" in content
+
+
+def test_tool_write_file():
+    session_id = "mock-session"
+    tool_call = ToolCall(
+        name="tool_write_file",
+        args={
+            "file_path": "test.txt", 
+            "file_data": "Hello, World!",
+            "session_id": "mock-session"
+        },
+        id="123",
+        type="tool_call"
+    )
+    actor: Actor = get_actor(session_id)
+    actor.memory.set_working_dir("/tmp")
+    result: ToolMessage = tool_write_file.invoke(tool_call)
+    assert result is not None
+    assert type(result) is ToolMessage
+    content = result.content
+    assert content is not None
+    assert type(content) == str

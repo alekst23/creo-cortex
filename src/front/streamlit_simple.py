@@ -18,19 +18,19 @@ CONVERSATION_LENGTH=50
 
 class StreamlitApp:
     def __init__(self):
+        logging.info(f">>> params: {st.query_params}")
+        session_id = st.query_params.get("session_id", "default")
+        logging.info(f">>> session_id: {session_id}")
+        
+        st.set_page_config(
+            page_title=f"CREO-CORTEX: {session_id}",
+            page_icon="⭐",
+            layout="wide",
+            initial_sidebar_state="expanded"
+        )
+
         # Set page config at the very beginning
         if 'setup_complete' not in st.session_state:
-            st.set_page_config(
-                page_title="CREO-CORTEX",
-                page_icon="⭐",
-                layout="wide",
-                initial_sidebar_state="expanded"
-            )
-            logging.info(f">>> params: {st.query_params}")
-            session_id = st.query_params.get("session_id", "default")
-            logging.info(f">>> session_id: {session_id}")
-            logging.info(f">>> debug: {session_id=='abc1234'}")
-            
             # Initialize session state
             self.state = st.session_state
             self.load_session(session_id)

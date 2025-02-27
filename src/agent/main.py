@@ -25,7 +25,8 @@ from agent.tools import (
     tool_clear_tasks,
     tool_set_goal,
     tool_open_file,
-    tool_close_file
+    tool_close_file,
+    tool_write_file
 )
 
 from agent.session_memory import SessionMemory
@@ -91,7 +92,8 @@ class MainAgent:
             tool_clear_tasks,
             tool_set_goal,
             tool_open_file,
-            tool_close_file
+            tool_close_file,
+            tool_write_file
         ]
         self.model = get_llm()
 
