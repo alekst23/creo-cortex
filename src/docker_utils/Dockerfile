@@ -1,7 +1,6 @@
-# Dockerfile
 FROM python:3.11-slim
 
-# Install system dependencies
+# Install necessary CLI tools (AWS CLI, Git, Docker CLI)
 RUN apt-get update && apt-get install -y \
     curl \
     unzip \
@@ -11,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
+# AWS CLI v2 install
 RUN arch=$(uname -m) && \
     if [ "$arch" = "x86_64" ]; then \
         curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"; \
@@ -23,6 +23,11 @@ RUN arch=$(uname -m) && \
     ./aws/install && \
     rm -rf aws awscliv2.zip
 
+# Docker CLI (client only)
+RUN curl -fsSL https://get.docker.com -o get-docker.sh && \
+    sh get-docker.sh && \
+    rm get-docker.sh
+
 # Install Python packages
 COPY requirements.txt /tmp/
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
@@ -33,5 +38,8 @@ WORKDIR /workspace
 # Create .aws directory with proper permissions
 RUN mkdir -p /root/.aws && chmod 700 /root/.aws
 
-# Keep container running
-CMD ["/bin/bash"]
+# Optional: Add a nice shell experience
+RUN apt-get update && apt-get install -y zsh vim && \
+    chsh -s $(which zsh)
+
+CMD ["/bin/zsh"]
