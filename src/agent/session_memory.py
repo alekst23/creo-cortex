@@ -27,7 +27,7 @@ class SessionMemory():
     def add_message(self, role, content):
         self.db["messages"].insert_one({"session_id": self.session_id, "role": role, "content": content})
 
-    def get_working_dir(self):
+    def get_working_dir(self)->str:
         result = self.db["environment"].find_one({"session_id": self.session_id})
         if result:
             return result.get("working_dir", None)
@@ -71,9 +71,9 @@ class SessionMemory():
     def clear_tasks(self):
         self.db["tasks"].delete_many({"session_id": self.session_id})
 
-    def set_open_file(self, file_path, data):
-        self.db["files"].update_one({"session_id": self.session_id, "file_path": file_path}, {"$set": {"data": data}}, upsert=True)
-
+    def set_open_file(self, file_path):
+        self.db["files"].insert_one({"session_id": self.session_id, "file_path": file_path})
+        
     def get_open_files(self):
         return list(self.db["files"].find({"session_id": self.session_id}))
     

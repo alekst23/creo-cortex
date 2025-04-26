@@ -11,7 +11,7 @@ src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-from agent.main import MainAgent, MODEL_BOOST
+from agent.main import MainAgent
 from agent.session_memory import get_session_memory
 
 CONVERSATION_LENGTH=50
@@ -74,7 +74,7 @@ class StreamlitApp:
         with col1:
             st.title("CREO-CORTEX")
             st.subheader("An assistant for building and deploying cloud applications.")
-            st.markdown("<sup>streamlit | langchain | langgraph ReAct</sup>", unsafe_allow_html=True)
+            st.markdown("<sup>streamlit | langchain | langgraph ReAct | AWS | shell</sup>", unsafe_allow_html=True)
         with col2:
             if new_session_id := st.text_input("session_id", self.state.session_id):
                 if new_session_id != self.state.session_id:
@@ -84,6 +84,7 @@ class StreamlitApp:
             if st.button(f"toggle boost: {self.mem.get_boost_state()}"):
                 self.mem.set_boost_state(not self.mem.get_boost_state())
                 st.rerun()
+            # st.write(self.agent.llmprovider.get_model_name())
 
         col1, col2 = st.columns(2)
         with col1:

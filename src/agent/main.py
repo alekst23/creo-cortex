@@ -12,6 +12,7 @@ from langgraph.checkpoint.memory import MemorySaver
 import boto3
 
 import logging
+logging.basicConfig(level=logging.INFO)
 
 from agent.tools import (
     tool_local_ip,
@@ -31,38 +32,46 @@ from agent.tools import (
 
 from agent.session_memory import SessionMemory
 from agent.actor import get_actor
+from agent.llm_provider import LLMProvider
 
-MODEL_NAME_DEFAULT = 'anthropic.claude-3-5-sonnet-20240620-v1:0'
+
+LLM_PROVIDER = 'bedrock'
+
 PROMPT_FILE_DEFAULT = 'MAIN.txt'
-#CHATGPT_MODEL = 'gpt-4o'
-CHATGPT_MODEL = 'o3-mini'
 
-MODEL_BOOST = {
-    False: 'o3-mini',
-    True: 'gpt-4o'
-}
+# AWS_MODEL_NAME_DEFAULT = 'anthropic.claude-3-5-sonnet-20240620-v1:0'
+# #CHATGPT_MODEL = 'gpt-4o'
+# CHATGPT_MODEL = 'o3-mini'
 
-def get_llm_openai():
-    from langchain_openai import ChatOpenAI
-    client = ChatOpenAI( model=CHATGPT_MODEL, api_key=os.getenv("OPENAI_API_KEY"))
-    # client.max_tokens = 120000
-    return client
+# MODEL_BOOST = {
+#     False: 'o3-mini',
+#     True: AWS_MODEL_NAME_DEFAULT #'gpt-4o'
+# }
+
+# def get_llm_openai():
+#     from langchain_openai import ChatOpenAI
+#     client = ChatOpenAI( model=CHATGPT_MODEL, api_key=os.getenv("OPENAI_API_KEY"))
+#     # client.max_tokens = 120000
+#     return client
 
 
-def get_llm_bedrock():
-    bedrock_client = boto3.client(
-        service_name="bedrock-runtime",
-        region_name="us-east-1",
-    )
-    bedrock_llm = ChatBedrock(
-        model=MODEL_NAME_DEFAULT,
-        client=bedrock_client,
-        model_kwargs={'temperature': 0}
-    )
-    return bedrock_llm
+# def get_llm_bedrock():
+#     bedrock_client = boto3.client(
+#         service_name="bedrock-runtime",
+#         region_name="us-east-1",
+#     )
+#     bedrock_llm = ChatBedrock(
+#         model=AWS_MODEL_NAME_DEFAULT,
+#         client=bedrock_client,
+#         model_kwargs={'temperature': 0}
+#     )
+#     return bedrock_llm
 
-def get_llm():
-    return get_llm_openai()
+# def get_llm(provider: str):
+#     if provider == 'bedrock':
+#         return get_llm_bedrock()
+#     else:
+#         return get_llm_openai()
 
 DEFAULT_WORKING_DIR = '/container/data'
 
@@ -70,7 +79,8 @@ class MainAgent:
     tools: List[BaseTool]
     model: BaseChatModel
     session_memory: SessionMemory
-    app: {}
+    app: dict = {}
+    llmprovider: LLMProvider
 
     def __init__(self, session_memory: SessionMemory = None):
         self.session_memory = session_memory
@@ -95,24 +105,12 @@ class MainAgent:
             tool_close_file,
             tool_write_file
         ]
-        self.model = get_llm()
-
-        prompt = PromptTemplate.from_template(
-            template=self.get_prompt_text()
-        ).format(
-            session_id=session_memory.session_id,
-            working_dir=session_memory.get_working_dir(),
-            goal=session_memory.get_goal(),
-            tasks=session_memory.get_tasks(),
-            notes_memory=session_memory.get_notes(),
-            open_files=session_memory.get_open_files()
-        )
 
         #checkpointer = MemorySaver()
-        self.app = {}
-        for key in MODEL_BOOST:
-            logging.info(f">>> Creating agent for ({key}) {MODEL_BOOST[key]}")
-            self.app[key] = create_react_agent(MODEL_BOOST[key], self.tools, prompt=str(prompt)) #, checkpointer=checkpointer)
+        # self.app = {}
+        # for key in MODEL_BOOST:
+        #     logging.info(f">>> Creating agent for ({key}) {MODEL_BOOST[key]}")
+        #     self.app[key] = create_react_agent(MODEL_BOOST[key], self.tools, prompt=str(prompt)) #, checkpointer=checkpointer)
 
 
     def get_prompt_text(self, file_name=PROMPT_FILE_DEFAULT):
@@ -120,20 +118,60 @@ class MainAgent:
         with open(config_path, "r") as file:
             return file.read()
         
+    def get_open_files(self):
+
+        # base mount: /container
+        # plust name of folder: /container/<folder-name>
+        file_path = self.session_memory.get_working_dir().split("/")[3:]
+        local_data_path = os.getenv('FILE_MOUNT_PATH')
+        data_path = os.path.join(local_data_path, *file_path)
+        logging.info(f">>> Local data path: {local_data_path}")
+        logging.info(f">>> File path: {file_path}")
+        logging.info(f">>> Full local file path: {data_path}")
+        
+        files = self.session_memory.get_open_files()
+        result = []
+        for f in files:
+            try:
+                with open(os.path.join(data_path, f["file_path"]), "r") as file:
+                    result.append({
+                        "file_path": f,
+                        "data": file.read()
+                    })
+            except Exception as e:
+                self.session_memory.remove_open_file(f["file_path"])
+                
+        return result
 
     def generate_response(self, message: str | list):
         # Use the agent
         if type(message) == str:
             message = [{"role": "user", "content": message}]
 
-        logging.info(f">>> Generating response using {MODEL_BOOST[self.session_memory.get_boost_state()]}")
-        final_state = self.app[self.session_memory.get_boost_state()].invoke(
-            {"messages": message},
-            config={
-                "configurable": {"thread_id": self.session_memory.session_id},
-                "recursion_limit": 100
-                }
+        # logging.info(f">>> Generating response using {MODEL_BOOST[self.session_memory.get_boost_state()]}")
+        # final_state = self.app[self.session_memory.get_boost_state()].invoke(
+        #     {"messages": message},
+        #     config={
+        #         "configurable": {"thread_id": self.session_memory.session_id},
+        #         "recursion_limit": 100
+        #         }
+        # )
+        # response = final_state["messages"][-1].content
+
+
+        prompt = PromptTemplate.from_template(
+            template=self.get_prompt_text()
+        ).format(
+            session_id=self.session_memory.session_id,
+            working_dir=self.session_memory.get_working_dir(),
+            goal=self.session_memory.get_goal(),
+            tasks=self.session_memory.get_tasks(),
+            notes_memory=self.session_memory.get_notes(),
+            open_files=self.get_open_files()
         )
-        response = final_state["messages"][-1].content
+
+        self.llmprovider = LLMProvider(self.session_memory, LLM_PROVIDER, prompt, self.tools)
+
+        response = self.llmprovider.get_response(message)
 
         return response

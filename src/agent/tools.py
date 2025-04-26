@@ -4,6 +4,7 @@ from langchain_core.tools import tool
 
 from docker_utils.docker_executor import DockerCommandExecutor
 from agent.actor import get_actor, Actor
+from agent.session_memory import SessionMemory
 
 from logging import getLogger, INFO
 logger = getLogger(__name__)
@@ -84,13 +85,13 @@ def tool_shell(session_id: str, cmd_string: str) -> str:
             command=f"{cmd_string}",
         )
         if exit_code != 0:
-            raise RuntimeError(f"AWS CLI command failed with exit code {exit_code}: {stderr}\n{stdout}")
+            raise RuntimeError(f"shell command failed with exit code {exit_code}: {stderr}\n{stdout}")
         
         return str(stdout)
     except Exception as e:
-        logger.error(f"Error running AWS CLI command: {str(e)}")
+        logger.error(f"Error running shell command: {str(e)}")
         logger.error(f"working_dir={actor.memory.get_working_dir()}")
-        return f"Error running AWS CLI command: {str(e)}"
+        return f"Error running shell command: {str(e)}"
     
 
 @tool
@@ -163,7 +164,7 @@ def tool_set_task_status(session_id: str, task_id: str, status: str) -> str:
 def tool_close_task(session_id: str, task_id: str, status: str, result: str) -> str:
     """
     Closes a task and updates the status and result.
-    The `status` parameter should be one of the following: `new`, `in_progress`, `done`, or `cancelled`.
+    The `status` parameter should be one of the following: `done`, or `cancelled`.
     The `result` parameter should be in Markdown format and should reflect the outcome of the task.
     """
     logger.info(">> TOOL: Closing task")
@@ -207,8 +208,8 @@ def tool_open_file(session_id: str, file_path: str) -> str:
             raise RuntimeError(f"Error opening file: {stderr}\n{stdout}")
         
         data = stdout
-        actor.memory.set_open_file(file_path, data)
-        return f"File opened successfully."
+        actor.memory.set_open_file(file_path)
+        return f"{file_path} opened successfully:\n{data}"
     except Exception as e:
         logger.error(f"Error opening file: {str(e)}")
         return f"Error opening file: {str(e)}"
@@ -229,15 +230,16 @@ def tool_close_file(session_id: str, file_path: str) -> str:
 @tool
 def tool_write_file(session_id: str, file_path: str, file_data: str) -> str:
     """
-    Writes data to a file.
+    Use this tool to write data to a file by providing the file contents as a string input to "file_data" parameter.
     `file_path` must be a path relative to the working directory.
+    `file_data` is a string or byte list to write to the file.
     """
     logger.info(">> TOOL: Writing file")
     logger.info(f"File path: {file_path}")
-    import subprocess
 
     try:
         actor: Actor = get_actor(session_id)
+        
         exit_code, stdout, stderr = actor.executor.write_to_file(
             container_name=os.getenv("EXECUTION_CONTAINER_NAME", DEFAULT_CONTAINER_NAME),
             working_dir=actor.memory.get_working_dir(),
