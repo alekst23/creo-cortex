@@ -2,9 +2,13 @@ from langchain_aws import ChatBedrock
 import boto3
 import os
 
+from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 
 from agent.session_memory import SessionMemory
+
+from logging import getLogger
+logger = getLogger(__name__)
 
 MODEL_BOOST_MAP = {
     'bedrock': {
@@ -44,34 +48,37 @@ def get_llm(provider: str, boost: bool):
     
 
 class LLMProvider:
-    def __init__(self, session_memory: SessionMemory, provider: str, prompt: str, tools: list):
+    def __init__(self, session_memory: SessionMemory, provider: str, prompt: str):
         """
         :param session_memory: SessionMemory
         :param provider: str - 'openai' or 'bedrock'
         """
         self.provider_name = provider
         self.mem = session_memory
-        #self.prompt = str(prompt)
-        #self.tools = tools
+        self.prompt = str(prompt)
 
-        # self.llm = {
-        #     True: get_llm(provider, True),
-        #     False: get_llm(provider, False)
-        # }
-        self.model = {
-            True: create_react_agent(get_llm(provider, True), tools, prompt=str(prompt)),
-            False: create_react_agent(get_llm(provider, False), tools, prompt=str(prompt))
-        }
-
-    def get_response(self, message: str | list) -> str:
-        response =  self.model[self.mem.get_boost_state()].invoke(
-            {"messages": message},
-            config={
-                "configurable": {"thread_id": self.mem.session_id},
-                "recursion_limit": 100
+    async def get_response(self, message: str | list) -> str:
+        async with MultiServerMCPClient(
+            {
+                "test": {
+                    "url": "http://localhost:8080/sse",
+                    "transport": "sse",
+                }
             }
-        )
-        return response["messages"][-1].content
+        ) as client:
+            model = get_llm(self.provider_name, self.mem.get_boost_state())
+            tools = client.get_tools()
+            agent = create_react_agent(model, tools, prompt=self.prompt)
+            response = await agent.ainvoke(
+                {"messages": message},
+                config={
+                    "configurable": {"thread_id": self.mem.session_id},
+                    "recursion_limit": 100
+                }
+            )
+            return response["messages"][-1].content
 
     def get_model_name(self):
         return MODEL_BOOST_MAP[self.provider_name][self.mem.get_boost_state()]
+    
+        

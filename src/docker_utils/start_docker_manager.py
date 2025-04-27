@@ -25,8 +25,6 @@ if __name__ == "__main__":
     if src_path not in sys.path:
         sys.path.insert(0, src_path)
 
-    
-
     data_folder = os.path.join(os.path.dirname(__file__), "..", "data-map")
 
     volume_paths = [data_folder] + args.shared_folder
@@ -66,9 +64,13 @@ if __name__ == "__main__":
         requirements_path=os.path.join(os.path.dirname(__file__), "requirements.txt")
     )
 
+    env_vars = {
+        "AWS_PROFILE": os.getenv("AWS_PROFILE"),
+        "AWS_REGION": os.getenv("AWS_REGION"),
+    }
     container = launcher.launch_container(
         container_name=os.getenv("EXECUTION_CONTAINER_NAME", "my_container"),
-        environment={"MYVAR": "value"},
+        environment=env_vars,
         ports=ports,
         volumes=volumes,
         use_aws_credentials=True,

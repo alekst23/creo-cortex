@@ -1,4 +1,5 @@
 import os, sys
+import asyncio
 import streamlit as st
 
 from dotenv import load_dotenv
@@ -60,7 +61,16 @@ class StreamlitApp:
             user_input = self.state.user_input
             self.state.messages.append(dict(role="user", content=user_input))
 
-            response = self.agent.generate_response(self.state.messages[-CONVERSATION_LENGTH:])
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            # Now run your async function
+            response = loop.run_until_complete(self.agent.generate_response(self.state.messages[-CONVERSATION_LENGTH:]))
+            
+            # Clean up
+            loop.close()
+
+            # Append the response to the messages
             self.state.messages.append(dict(role="assistant", content=response))
 
             self.mem.add_message("user", user_input)

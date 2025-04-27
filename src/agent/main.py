@@ -119,11 +119,25 @@ class MainAgent:
             return file.read()
         
     def get_open_files(self):
-
-        # base mount: /container
-        # plust name of folder: /container/<folder-name>
-        file_path = self.session_memory.get_working_dir().split("/")[3:]
+        working_dir = self.session_memory.get_working_dir()
         local_data_path = os.getenv('FILE_MOUNT_PATH')
+        
+        # Check if working_dir is None or empty
+        if not working_dir:
+            logging.warning("Working directory is None or empty")
+            return []
+        
+        # Split path and handle the case where it might not have expected elements
+        path_parts = working_dir.split("/")
+        if len(path_parts) < 4:
+            logging.warning(f"Unexpected working directory format: {working_dir}")
+            return []
+            
+        file_path = path_parts[3:]
+        if not file_path:
+            logging.warning("No file path components after splitting")
+            return []
+        
         data_path = os.path.join(local_data_path, *file_path)
         logging.info(f">>> Local data path: {local_data_path}")
         logging.info(f">>> File path: {file_path}")
@@ -139,11 +153,12 @@ class MainAgent:
                         "data": file.read()
                     })
             except Exception as e:
+                logging.error(f"Error reading file {f['file_path']}: {e}")
                 self.session_memory.remove_open_file(f["file_path"])
-                
+                    
         return result
 
-    def generate_response(self, message: str | list):
+    async def generate_response(self, message: str | list):
         # Use the agent
         if type(message) == str:
             message = [{"role": "user", "content": message}]
@@ -170,8 +185,8 @@ class MainAgent:
             open_files=self.get_open_files()
         )
 
-        self.llmprovider = LLMProvider(self.session_memory, LLM_PROVIDER, prompt, self.tools)
+        self.llmprovider = LLMProvider(self.session_memory, LLM_PROVIDER, prompt)
 
-        response = self.llmprovider.get_response(message)
+        response = await self.llmprovider.get_response(message)
 
         return response
