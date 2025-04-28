@@ -120,7 +120,7 @@ class MainAgent:
         
     def get_open_files(self):
         working_dir = self.session_memory.get_working_dir()
-        local_data_path = os.getenv('FILE_MOUNT_PATH')
+        local_data_path = os.getenv('PROJECT_FOLDER')
         
         # Check if working_dir is None or empty
         if not working_dir:
