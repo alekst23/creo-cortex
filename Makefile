@@ -5,7 +5,10 @@ install: start-mongo
 	pip install -r requirements.txt
 
 build:
-	python admin/start_target_docker.py
+	sh admin/run_manager.sh
 
-run:
+run-mcp:
+	python src/server/mcp_server.py
+
+run-client:
 	streamlit run src/front/streamlit_simple.py

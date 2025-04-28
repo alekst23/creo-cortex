@@ -1,152 +1,134 @@
+import os
+import sys
+import time
 import docker
 import argparse
 import os
-import shutil
-import tempfile
 from typing import Optional, Dict, List
+from docker.errors import APIError, NotFound
 
 from dotenv import load_dotenv
 load_dotenv()
 
+
+# Setup logging
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 DEFAULT_WORKING_DIR = "/container/data"
 AWS_PROFILE = os.getenv("DOCKER_AWS_PROFILE", "default")
 
+
 class DockerEnvironmentManager:
     def __init__(self):
-        self.client = docker.from_env()
-        self.image_name = "custom-python-env"
-        self.image_tag = "latest"
-
-    def build_image(self, dockerfile_path: str, requirements_path: str) -> str:
-        """
-        Build a Docker image from the Dockerfile
-        
-        Args:
-            dockerfile_path: Path to the Dockerfile
-            requirements_path: Path to requirements.txt
-        
-        Returns:
-            str: Image ID
-        """
         try:
-            # Create a temporary build context
-            with tempfile.TemporaryDirectory() as build_context:
-                # Copy Dockerfile and requirements.txt to build context
-                shutil.copy2(dockerfile_path, build_context)
-                shutil.copy2(requirements_path, os.path.join(build_context, 'requirements.txt'))
-                
-                print(f"Building image {self.image_name}...")
-                image, logs = self.client.images.build(
-                    path=build_context,
-                    dockerfile=os.path.basename(dockerfile_path),
-                    tag=f"{self.image_name}:{self.image_tag}",
-                    rm=True
-                )
-                
-                # Print build logs
-                for log in logs:
-                    if 'stream' in log:
-                        print(log['stream'].strip())
-                        
-                return image.id
-            
+            self.client = docker.from_env()
         except Exception as e:
-            print(f"Error building image: {str(e)}")
-            raise
+            logger.error(f"Failed to initialize Docker client: {e}")
+            sys.exit(2)
+
+    def build_image(self, dockerfile_path: str, requirements_path: str = None, tag: str = "devops-container"):
+        try:
+            logger.info(f"\n\n>>> Building Docker image from {dockerfile_path}")
+            context_path = os.path.dirname(dockerfile_path)
+            dockerfile_rel = os.path.basename(dockerfile_path)
+
+            build_args = {}
+            if requirements_path:
+                build_args["REQUIREMENTS"] = requirements_path
+
+            image, logs = self.client.images.build(
+                path=context_path,
+                dockerfile=dockerfile_rel,
+                tag=tag,
+                buildargs=build_args,
+                rm=True
+            )
+            for chunk in logs:
+                if 'stream' in chunk:
+                    logger.info(chunk['stream'].strip())
+            logger.info(f"Successfully built image: {tag}")
+        except APIError as e:
+            logger.error(f"Docker build failed: {e}")
+            sys.exit(3)
 
     def launch_container(
-        self,
-        container_name: Optional[str] = None,
-        environment: Optional[Dict[str, str]] = None,
-        ports: Optional[Dict[str, str]] = None,
-        volumes: Optional[Dict[str, Dict[str, str]]] = None,
-        use_aws_credentials: bool = True,
-        use_github_credentials: bool = True,
-        additional_mounts: Optional[List[str]] = None
-    ):
-        """
-        Launch a container with the custom environment
-        
-        Args:
-            container_name: Optional name for the container
-            environment: Dictionary of environment variables
-            ports: Dictionary of port mappings
-            volumes: Dictionary of volume mappings
-            use_aws_credentials: Whether to mount AWS credentials
-            additional_mounts: List of additional host:container path pairs to mount
-        """
+            self,
+            container_name: Optional[str] = None,
+            environment: Optional[Dict[str, str]] = None,
+            ports: Optional[Dict[str, str]] = None,
+            volumes: Optional[Dict[str, Dict[str, str]]] = None,
+            use_aws_credentials: bool = False, 
+            use_github_credentials: bool = False, 
+            image_tag: str = "devops-container"):
         try:
-            # Prepare volumes
+            logger.info("\n\n>>> Launching Docker container...")
+
+            # Clean up any existing container with same name
+            try:
+                old_container = self.client.containers.get(container_name)
+                logger.info(f"\n\n>>> Removing existing container: {container_name}")
+                old_container.stop()
+                old_container.remove()
+            except NotFound:
+                pass  # No existing container
+
+            env_vars = environment or {}
             volumes = volumes or {}
-            
-            # Add AWS credentials if requested
+
+            # Always mount Docker socket to control the daemon
+            docker_socket_path = "/var/run/docker.sock"
+            if os.path.exists(docker_socket_path):
+                volumes[docker_socket_path] = {"bind": "/var/run/docker.sock", "mode": "rw"}
+                logger.info("\n\n>>> Mounted Docker socket for daemon access.")
+            else:
+                logger.warning("\n\n>>> Docker socket not found. Container control will not be available.")
+
             if use_aws_credentials:
                 aws_path = os.path.expanduser("~/.aws")
                 if os.path.exists(aws_path):
-                    print(f"Found AWS credentials at {aws_path}")
-                    # List the files to verify they exist
-                    if os.path.exists(os.path.join(aws_path, 'credentials')):
-                        print("Found AWS credentials file")
-                    if os.path.exists(os.path.join(aws_path, 'config')):
-                        print("Found AWS config file")
-                    
-                    # Mount with read-only
-                    volumes[aws_path] = {'bind': '/root/.aws', 'mode': 'ro'}
-                else:
-                    print("Warning: AWS credentials directory not found at " + aws_path)
-            
-            # Add GitHub credentials if requested
+                    volumes[aws_path] = {"bind": "/root/.aws", "mode": "rw"}
+                    logger.info("Mounted AWS credentials.")
+
             if use_github_credentials:
-                ssh_path = os.path.expanduser("~/.ssh")
-                if os.path.exists(ssh_path):
-                    print(f"Found SSH keys at {ssh_path}")
-                    volumes[ssh_path] = {'bind': '/root/.ssh', 'mode': 'ro'}
-                else:
-                    print("Warning: SSH keys directory not found at " + ssh_path)
+                gitconfig = os.path.expanduser("~/.gitconfig")
+                ssh_folder = os.path.expanduser("~/.ssh")
+                if os.path.exists(gitconfig):
+                    volumes[gitconfig] = {"bind": "/root/.gitconfig", "mode": "rw"}
+                if os.path.exists(ssh_folder):
+                    volumes[ssh_folder] = {"bind": "/root/.ssh", "mode": "rw"}
+                logger.info("Mounted GitHub credentials.")
 
-            # Add additional mounts
-            if additional_mounts:
-                for mount in additional_mounts:
-                    host_path, container_path = mount.split(':')
-                    volumes[host_path] = {'bind': container_path, 'mode': 'rw'}
-            
-            # Check if container is running
-            if container_name:
-                try:
-                    container = self.client.containers.get(container_name)
-                    if container.status == "running":
-                        print(f"Container {container_name} is already running")
-                        # kill the container
-                        container.kill()
-                        print(f"Container {container_name} killed successfully!")
-                        # remove the container
-                        container.remove()
-                        print(f"Container {container_name} removed successfully!")
-                        
-                except docker.errors.NotFound:
-                    pass
-
-            # Launch container
+            logger.info(f"\n\n>>> Launching container {container_name}")
             container = self.client.containers.run(
-                f"{self.image_name}:{self.image_tag}",
+                image_tag,
                 name=container_name,
-                environment={**(environment or {}), "AWS_PROFILE": AWS_PROFILE},
-                ports=ports or {},
+                environment=env_vars,
+                ports=ports,
                 volumes=volumes,
-                detach=True,
-                tty=True,
                 stdin_open=True,
-                working_dir=DEFAULT_WORKING_DIR
+                tty=True,
+                detach=True,
+                privileged=True,
             )
-            
-            print(f"Container {container.name} launched successfully!")
-            print(f"To attach to the container, run: docker exec -it {container.name} /bin/bash")
-            
-            return container
-            
-        except Exception as e:
-            print(f"Error launching container: {str(e)}")
-            raise
+
+            # Wait for container to be healthy or timeout
+            timeout = 30  # seconds
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                container.reload()
+                if container.status == "running":
+                    logger.info(f"Container {container_name} is running.")
+                    return container
+                time.sleep(1)
+            logger.error(f"Container {container_name} did not become healthy within {timeout} seconds.")
+            sys.exit(4)
+
+        except APIError as e:
+            logger.error(f"Failed to launch container: {e}")
+            sys.exit(5)
+
 
 def main():
     parser = argparse.ArgumentParser(description='Build and launch custom Docker environment')
